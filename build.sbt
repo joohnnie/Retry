@@ -6,7 +6,7 @@ scalaVersion := "2.12.15"
 
 crossScalaVersions := Seq("2.12.15", "2.13.10", "3.1.1")
 
-version := "1.0.0"
+version := "1.0.1"
 
 libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "3.2.15" % Test

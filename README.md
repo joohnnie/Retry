@@ -25,7 +25,7 @@ libraryDependencies += "fun.zyx" %% "retry" % "1.0.0"
 First, import the Retry library
 
 ```
-import fun.zyx.retry.Retry._
+import fun.zyx.retry._
 
 ```
 
@@ -34,7 +34,8 @@ import fun.zyx.retry.Retry._
 To use the retry library with synchronous functions, wrap your function with the retry method:
 
 ```
-import retry._
+import fun.zyx.retry._
+import scala.concurrent.duration._
 
 val result = Retry.retry(RetryStrategy.fixedDelay(1.second)) {
   // Your code that may fail
@@ -48,7 +49,7 @@ To use the retry library with asynchronous functions, wrap your function with th
 
 ```
 import scala.concurrent.duration._
-import retry._
+import fun.zyx.retry._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 val futureResult = Retry.retryAsync(RetryStrategy.fixedDelay(1.second)) {
@@ -64,7 +65,7 @@ To use this strategy, call `RetryStrategy.fixedDelay` and pass in the delay dura
 For example:
 
 ```scala
-import retry.RetryStrategy
+import fun.zyx.retry._
 
 val strategy = RetryStrategy.fixedDelay(1.second, 3)
 
@@ -79,7 +80,7 @@ attempt. To use this strategy, call `RetryStrategy.exponentialBackoff` and pass 
 and the maximum number of retries. For example:
 
 ```scala
-import retry.RetryStrategy
+import fun.zyx.retry._
 
 val strategy = RetryStrategy.exponentialBackoff(1.second, 3)
 
@@ -94,7 +95,7 @@ To use this strategy, call `RetryStrategy.randomDelay` and pass in the minimum d
 the maximum delay duration, and the maximum number of retries. For example:
 
 ```scala
-import retry.RetryStrategy
+import fun.zyx.retry._
 
 val strategy = RetryStrategy.randomDelay(1.second, 10.seconds, 3)
 
@@ -108,7 +109,7 @@ By default, the RetryStrategy will not retry when encountering exceptions of typ
 should not be retried by creating a RetryStrategy object with a set of non-retryable exceptions. For example:
 
 ```scala
-import retry.RetryStrategy
+import fun.zyx.retry._
 
 val strategy = RetryStrategy(
   shouldRetry = (retryCount, exception) => Some(1.second),

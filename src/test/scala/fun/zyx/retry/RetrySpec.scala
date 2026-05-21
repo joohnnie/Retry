@@ -138,4 +138,137 @@ class RetrySpec extends AnyFlatSpec with Matchers {
     result shouldEqual 3
     i shouldEqual 3
   }
+
+  // ---- max-retries exhaustion ----
+
+  it should "throw after all retries are exhausted" in {
+    var attempts = 0
+    val strategy = RetryStrategy.fixedDelay(0.millis, 2)
+    assertThrows[RuntimeException] {
+      Retry.retry(strategy) {
+        attempts += 1
+        throw new RuntimeException("always fails")
+      }
+    }
+    attempts shouldEqual 3 // 1 initial + 2 retries
+  }
+
+  it should "not retry when maxRetries is 0" in {
+    var attempts = 0
+    val strategy = RetryStrategy.fixedDelay(0.millis, 0)
+    assertThrows[RuntimeException] {
+      Retry.retry(strategy) {
+        attempts += 1
+        throw new RuntimeException("always fails")
+      }
+    }
+    attempts shouldEqual 1
+  }
+
+  it should "stop retrying for custom non-retryable exception type" in {
+    var attempts = 0
+    val strategy = RetryStrategy(
+        shouldRetry = (retryCount, _) => if (retryCount < 3) Some(0.millis) else None,
+        nonRetryableExceptions = Set(classOf[IllegalStateException])
+    )
+    assertThrows[IllegalStateException] {
+      Retry.retry(strategy) {
+        attempts += 1
+        throw new IllegalStateException("not retryable")
+      }
+    }
+    attempts shouldEqual 1
+  }
+
+  // ---- isRetryable ----
+
+  "RetryStrategy.isRetryable" should "return false for configured non-retryable exceptions" in {
+    val strategy = RetryStrategy(
+        shouldRetry = (_, _) => Some(0.millis),
+        nonRetryableExceptions =
+          Set(classOf[IllegalArgumentException], classOf[InterruptedException])
+    )
+    strategy.isRetryable(new IllegalArgumentException("test")) shouldBe false
+    strategy.isRetryable(new InterruptedException("test")) shouldBe false
+  }
+
+  it should "return true for exceptions not in the non-retryable set" in {
+    val strategy = RetryStrategy(
+        shouldRetry = (_, _) => Some(0.millis),
+        nonRetryableExceptions = Set(classOf[IllegalArgumentException])
+    )
+    strategy.isRetryable(new RuntimeException("test")) shouldBe true
+    strategy.isRetryable(new Exception("test")) shouldBe true
+  }
+
+  it should "return false for a subclass of a configured non-retryable exception" in {
+    val strategy = RetryStrategy(
+        shouldRetry = (_, _) => Some(0.millis),
+        nonRetryableExceptions = Set(classOf[RuntimeException])
+    )
+    // IllegalArgumentException extends RuntimeException
+    strategy.isRetryable(new IllegalArgumentException("subclass")) shouldBe false
+  }
+
+  // ---- delay correctness ----
+
+  "RetryStrategy.exponentialBackoff" should "produce correctly doubled delays" in {
+    val strategy = RetryStrategy.exponentialBackoff(1.second, 5)
+    strategy.shouldRetry(0, new RuntimeException()).map(_.toMillis) shouldEqual Some(1000L)
+    strategy.shouldRetry(1, new RuntimeException()).map(_.toMillis) shouldEqual Some(2000L)
+    strategy.shouldRetry(2, new RuntimeException()).map(_.toMillis) shouldEqual Some(4000L)
+    strategy.shouldRetry(3, new RuntimeException()).map(_.toMillis) shouldEqual Some(8000L)
+  }
+
+  it should "return None once maxRetries is reached" in {
+    val strategy = RetryStrategy.exponentialBackoff(1.second, 2)
+    strategy.shouldRetry(2, new RuntimeException()) shouldEqual None
+  }
+
+  "RetryStrategy.fixedDelay" should "always return the same delay within maxRetries" in {
+    val strategy = RetryStrategy.fixedDelay(500.millis, 3)
+    (0 until 3).foreach { i =>
+      strategy.shouldRetry(i, new RuntimeException()) shouldEqual Some(500.millis)
+    }
+    strategy.shouldRetry(3, new RuntimeException()) shouldEqual None
+  }
+
+  "RetryStrategy.randomDelay" should "return delays within [minDelay, maxDelay)" in {
+    val strategy = RetryStrategy.randomDelay(100.millis, 500.millis, 20)
+    (0 until 20).foreach { i =>
+      strategy.shouldRetry(i, new RuntimeException()) match {
+        case Some(delay) =>
+          delay.toMillis should (be >= 100L and be < 500L)
+        case None => fail(s"Expected Some delay for retryCount=$i")
+      }
+    }
+  }
+
+  // ---- retryAsync additional coverage ----
+
+  "retryAsync" should "fail after all retries are exhausted" in {
+    var attempts = 0
+    val strategy = RetryStrategy.fixedDelay(0.millis, 2)
+    val future = Retry.retryAsync(strategy)(Future {
+      attempts += 1
+      throw new RuntimeException("always fails")
+    })
+    assertThrows[RuntimeException] {
+      Await.result(future, 5.seconds)
+    }
+    attempts shouldEqual 3 // 1 initial + 2 retries
+  }
+
+  it should "not retry non-retryable exceptions" in {
+    var attempts = 0
+    val strategy = RetryStrategy.fixedDelay(0.millis, 3)
+    val future = Retry.retryAsync(strategy)(Future {
+      attempts += 1
+      throw new IllegalArgumentException("not retryable")
+    })
+    assertThrows[IllegalArgumentException] {
+      Await.result(future, 5.seconds)
+    }
+    attempts shouldEqual 1
+  }
 }

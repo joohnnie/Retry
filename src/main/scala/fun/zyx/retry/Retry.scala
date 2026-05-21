@@ -16,6 +16,8 @@
 
 package fun.zyx.retry
 
+import java.util.concurrent.{Executors, TimeUnit}
+
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
@@ -24,6 +26,12 @@ import scala.util.{Failure, Success, Try}
  * The Retry object provides utilities for retrying functions that may throw exceptions.
  */
 object Retry {
+
+  private val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
+    val t = new Thread(r, "retry-scheduler")
+    t.setDaemon(true)
+    t
+  }
 
   /**
    * Retries a given function synchronously based on the provided RetryStrategy.
@@ -84,10 +92,11 @@ object Retry {
         case Failure(exception) if strategy.isRetryable(exception) =>
           strategy.shouldRetry(retryCount, exception) match {
             case Some(delay) =>
-              ec.execute(() => {
-                Thread.sleep(delay.toMillis)
-                retryHelper(retryCount + 1)
-              })
+              scheduler.schedule(
+                (() => retryHelper(retryCount + 1)): Runnable,
+                delay.toMillis,
+                TimeUnit.MILLISECONDS
+              )
             case None => promise.failure(exception)
           }
         case Failure(exception) => promise.failure(exception)

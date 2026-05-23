@@ -60,8 +60,8 @@ object RetryStrategy {
 
   def fixedDelay(delay: Duration, maxRetries: Int = DEFAULT_MAX_RETRIES): RetryStrategy = {
     RetryStrategy(
-        shouldRetry = (retryCount: Int, exception: Throwable) =>
-          if (retryCount <= maxRetries) Some(delay) else None
+        shouldRetry = (retryCount: Int, _: Throwable) =>
+          if (retryCount < maxRetries) Some(delay) else None
     )
   }
 
@@ -70,8 +70,8 @@ object RetryStrategy {
       maxRetries: Int = DEFAULT_MAX_RETRIES
   ): RetryStrategy = {
     RetryStrategy(
-        shouldRetry = (retryCount: Int, exception: Throwable) =>
-          if (retryCount <= maxRetries) Some(initialDelay * (2 ^ retryCount)) else None
+        shouldRetry = (retryCount: Int, _: Throwable) =>
+          if (retryCount < maxRetries) Some(initialDelay * (1L << retryCount)) else None
     )
   }
 
@@ -80,13 +80,14 @@ object RetryStrategy {
       maxDelay: Duration,
       maxRetries: Int = DEFAULT_MAX_RETRIES
   ): RetryStrategy = {
-
     RetryStrategy(
-        shouldRetry = (retryCount: Int, exception: Throwable) =>
-          if (retryCount <= maxRetries) {
-            val delay =
-              minDelay.toMillis + Random.nextInt((maxDelay.toMillis - minDelay.toMillis).toInt)
-            Some(delay.millis)
+        shouldRetry = (retryCount: Int, _: Throwable) =>
+          if (retryCount < maxRetries) {
+            val range = maxDelay.toMillis - minDelay.toMillis
+            val randomMillis =
+              if (range <= Int.MaxValue) Random.nextInt(range.toInt).toLong
+              else (Random.nextLong() >>> 1) % range
+            Some((minDelay.toMillis + randomMillis).millis)
           } else None
     )
   }
